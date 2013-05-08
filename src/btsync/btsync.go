@@ -48,46 +48,63 @@ type FolderInfo struct {
 	Speed	string   `json:"speed"`
 }
 
+// Get Params
+type params map[string]string
+
 // Get http://host:port/gui/ url
 func (c *Client) BaseUrl() string {
 	return fmt.Sprintf("http://%s:%s/gui/", c.Host, c.Port)
 }
 
-// Create new Request with cookies and authorization
-func (c *Client) NewRequest() (*http.Request, *http.Client, error) {
-	client := &http.Client{}
+// Returns new Client
+func NewClient(host, port, user, password string) *Client {
+	return &Client{
+		Host: host,
+		Port: port,
+		User: user,
+		Password: password,
+		cookies: &myjar{ make(map[string] []*http.Cookie) },
+		values: make(url.Values),
+	};
+}
 
-	if c.cookies == nil {
-		c.cookies = &myjar{}
-		c.cookies.jar = make(map[string] []*http.Cookie)
-		c.values = make(url.Values)
-	}
+// Create new Request with cookies and authorization
+func (c *Client) NewRequest(afterUrl string, getParams params) ( resp *http.Response, err error ) {
+	client := &http.Client{}
 
 	client.Jar = c.cookies
 	req, err := http.NewRequest("GET", c.BaseUrl(), nil)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
+	if afterUrl != "" {
+		req.URL.Path += afterUrl
+	}
+
+	// set get params
 	c.values.Set("token", c.token)
+	for k, v := range getParams {
+		c.values.Set(k , v)
+	}
+
 	req.URL.RawQuery = c.values.Encode()
 	req.SetBasicAuth(c.User, c.Password)
 
-	return req, client, err
+	// Make Request
+	resp, err = client.Do(req)
+	if err != nil {
+		return
+	}
+
+	return
 }
 
 // Fill c.token and return operation result
 func (c *Client) RequestToken() bool {
-	req, client, err := c.NewRequest();
+	resp, err := c.NewRequest("token.html", nil);
 	if err != nil {
 		log.Print(err)
-		return false
-	}
-
-	req.URL.Path += "token.html"
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Printf("Error : %s", err)
 		return false
 	}
 
@@ -99,14 +116,11 @@ func (c *Client) RequestToken() bool {
 
 // Get Secret
 func (c *Client) GenerateSecret() ( s Secret, err error ) {
-	c.values.Set("action", "generatesecret")
-
-	req, client, err := c.NewRequest();
-	if err != nil {
-		return
+	getParams := params {
+		"action": "generatesecret",
 	}
 
-	resp, err := client.Do(req)
+	resp, err := c.NewRequest("", getParams)
 	if err != nil {
 		return
 	}
@@ -121,13 +135,11 @@ func (c *Client) GenerateSecret() ( s Secret, err error ) {
 
 // Get Sync Folders
 func (c *Client) Folders() ( fi FolderInfo, err error ) {
-	c.values.Set("action", "getsyncfolders")
-	req, client, err := c.NewRequest();
-	if err != nil {
-		return
+	getParams := params {
+		"action": "getsyncfolders",
 	}
 
-	resp, err := client.Do(req)
+	resp, err := c.NewRequest("", getParams);
 	if err != nil {
 		return
 	}
@@ -155,17 +167,13 @@ func (c *Client) AddSyncFolder(path, secret string) ( r SyncFolderError ) {
 		r.Secret.Secret = secret
 	}
 
-	c.values.Set("action", "addsyncfolder")
-	c.values.Set("name", path)
-	c.values.Set("secret", secret)
-
-	req, client, err := c.NewRequest();
-	if err != nil {
-		r.Err = err
-		return
+	getParams := params {
+		"action": "addsyncfolder",
+		"name" : path,
+		"secret": secret,
 	}
 
-	resp, err := client.Do(req)
+	resp, err := c.NewRequest("", getParams);
 	if err != nil {
 		r.Err = err
 		return
@@ -185,17 +193,13 @@ func (c *Client) AddSyncFolder(path, secret string) ( r SyncFolderError ) {
 
 // Remove Sync Folder
 func (c *Client) RemoveSyncFolder(path, secret string) ( r SyncFolderError ) {
-	c.values.Set("action", "removefolder")
-	c.values.Set("name", path)
-	c.values.Set("secret", secret)
-
-	req, client, err := c.NewRequest();
-	if err != nil {
-		r.Err = err
-		return
+	getParams := params {
+		"action": "removefolder",
+		"name": path,
+		"secret": secret,
 	}
 
-	resp, err := client.Do(req)
+	resp, err := c.NewRequest("", getParams);
 	if err != nil {
 		r.Err = err
 		return
